@@ -4,7 +4,7 @@ import numpy as np
 from gym.spaces import Box
 from nes_py.wrappers import JoypadSpace
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT, RIGHT_ONLY
-from env.monitor import Monitor
+from envs.monitor import Monitor
 import gym_super_mario_bros
 
 def process_frame(frame):
@@ -40,7 +40,7 @@ class CustomRewardWrapper(gym.Wrapper):
         
         # Add bonus for completing level
         if done:
-            reward += 50 if info["flag_get"] else -50
+            reward += 500 if info["flag_get"] else -50
             
         # World-specific death conditions
         if self.world == 7 and self.stage == 4:
@@ -119,17 +119,17 @@ class CustomSkipFrameWrapper(gym.Wrapper):
         self.states = np.concatenate([state for _ in range(self.skip)], 0)
         return self.states[None, :, :, :].astype(np.float32), info
 
-def create_train_env(world, stage, action_type="simple", output_path=None):
-    try:
+def create_train_env(world, stage, action_type="simple", output_path=None, version = 'v3'):
+    if (version == 'v3'):
         # Try modern environment ID first
         env = gym_super_mario_bros.make(
             f"SuperMarioBros-{world}-{stage}-v3",
             apply_api_compatibility=True,
             render_mode="human"
         )
-    except gym.error.Error:
-        # Fallback to v0 environment
-        env = gym.make(
+    else:
+        # v0 for visualization
+        env = gym_super_mario_bros.make(
             "SuperMarioBros-v0",
             apply_api_compatibility=True,
             render_mode="human"
