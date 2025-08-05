@@ -102,7 +102,7 @@ def main():
                     rewards=np.array(rewards),
                     log_probs_old=np.array(log_probs),
                     dones=np.array(dones),
-                    values=np.array(values)
+                    values_old=np.array(values)
                 )
                 # clear buffers
                 states, actions, rewards, log_probs, dones, values = [], [], [], [], [], []
@@ -117,7 +117,7 @@ def main():
                 rewards=np.array(rewards),
                 log_probs_old=np.array(log_probs),
                 dones=np.array(dones),
-                values=np.array(values)
+                values_old=np.array(values)
             )
 
         # store current episode reward for plotting
