@@ -2,10 +2,7 @@
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Mario--RL-black?logo=github)](https://github.com/pipoiwoczz/Mario-RL) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE) [![Python](https://img.shields.io/badge/python-3.8%2C3.9-blue)](https://www.python.org/) [![Deps](https://img.shields.io/badge/deps-numpy%20%7C%20gym--super--mario--bros-lightgrey)](https://pypi.org/)
 
-<video width="640" controls>
-  <source src="eval_videos/map_1.1.gif" type="video/gif">
-  Your browser does not support the video tag.
-</video>
+<img src="eval_videos/map_1.1.gif" width="640" alt="Mario RL Demo GIF" />
 
 Mario-RL is a reinforcement learning project designed to train an agent to navigate and excel in the classic Super Mario Bros game environment using advanced RL algorithms. The project leverages a multiprocessing-ready environment wrapper (`MultiMarioEnv`) and a monitoring system to record high-score videos, making it ideal for RL experimentation. It is currently in active development, with ongoing improvements to training stability, agent performance, and environment robustness.
 
