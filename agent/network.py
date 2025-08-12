@@ -1,42 +1,26 @@
 import torch.nn as nn
 import torch
-import numpy as np
+from config import H, W
 
-class MarioNet(nn.Module):
-    def __init__(self, input_dims, n_actions, device = 'cpu'):
+class CNNPolicy(nn.Module):
+    def __init__(self, in_channels, num_actions):
         super().__init__()
-        self.device = device
-        self.feature_extractor = nn.Sequential(
-            nn.Conv2d(input_dims[0], 32, 8, stride=4).to(device),  # Input: [channels, H, W]
-            nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2).to(device),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1).to(device),
-            nn.ReLU(),
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, 32, 8, stride=4), nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
             nn.Flatten()
         )
-        
-        # Dynamically calculate linear layer input size
         with torch.no_grad():
-            dummy = torch.zeros(1, *input_dims).to(device)  # [1, channels, H, W]
-            n_flatten = self.feature_extractor(dummy).shape[1]
-        
-        self.actor = nn.Sequential(
-            nn.Linear(n_flatten, 512).to(device),
-            nn.ReLU(),
-            nn.Linear(512, n_actions).to(device),
-            nn.Softmax(dim=-1)
-        )
-        
-        self.critic = nn.Sequential(
-            nn.Linear(n_flatten, 512).to(device),
-            nn.ReLU(),
-            nn.Linear(512, 1).to(device)
-        )
+            dummy = torch.zeros(1, in_channels, H, W)
+            conv_out = self.conv(dummy).shape[1]
+        self.fc = nn.Sequential(nn.Linear(conv_out, 512), nn.ReLU())
+        self.policy_logits = nn.Linear(512, num_actions)
+        self.value_head = nn.Linear(512, 1)
 
     def forward(self, x):
-        # Input x: [batch_size, channels, H, W]
-        features = self.feature_extractor(x)
-        probs = self.actor(features)
-        value = self.critic(features)
-        return probs, value
+        x = self.conv(x)
+        x = self.fc(x)
+        logits = self.policy_logits(x)
+        value = self.value_head(x).squeeze(-1)
+        return logits, value
