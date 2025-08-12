@@ -1,151 +1,205 @@
-import  gym
-import cv2
+import os
+import imageio
 import numpy as np
-from gym.spaces import Box
-from nes_py.wrappers import JoypadSpace
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT, RIGHT_ONLY
-from envs.monitor import Monitor
+import multiprocessing as mp
+import cv2
+from collections import deque
 import gym_super_mario_bros
+from nes_py.wrappers import JoypadSpace
+from gym_super_mario_bros.actions import RIGHT_ONLY, SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
 
-def process_frame(frame):
-    if frame is not None:
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(frame, (84, 84))[None, :, :] / 255.0
-        return frame
-    return np.zeros((1, 84, 84))
+from envs.monitor import Monitor
 
-class CustomRewardWrapper(gym.Wrapper):
-    def __init__(self, env, world=None, stage=None, monitor=None):
-        super().__init__(env)
-        self.observation_space = Box(low=0, high=255, shape=(1, 84, 84))
-        self.curr_score = 0
-        self.current_x = 40
-        self.world = world
-        self.stage = stage
-        self.monitor = monitor
+def preprocess_frame(frame, size=(84, 84)):
+    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    frame = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
+    return frame.astype(np.uint8)
 
-    def step(self, action):
-        # Gymnasium returns 5 values: obs, reward, terminated, truncated, info
-        state, reward, terminated, truncated, info = self.env.step(action)
-        
-        if self.monitor:
-            self.monitor.record(state)
-            
-        state = process_frame(state)
-        done = terminated or truncated
-        
-        # Update reward based on score
-        reward += (info["score"] - self.curr_score) / 40.0
-        self.curr_score = info["score"]
-        
-        # Add bonus for completing level
-        if done:
-            reward += 500 if info["flag_get"] else -50
-            
-        # World-specific death conditions
-        if self.world == 7 and self.stage == 4:
-            if self._is_death_condition_w7s4(info):
-                reward -= 50
-                terminated = True
-                
-        if self.world == 4 and self.stage == 4:
-            if self._is_death_condition_w4s4(info):
-                reward = -50
-                terminated = True
-                
-        self.current_x = info["x_pos"]
-        return state, reward / 10.0, terminated, truncated, info
-
-    def reset(self, **kwargs):
-        self.curr_score = 0
-        self.current_x = 40
-        # Gymnasium reset returns 2 values: obs, info
-        obs, info = self.env.reset(**kwargs)
-        return process_frame(obs), info
-    
-    def _is_death_condition_w7s4(self, info):
-        x, y = info["x_pos"], info["y_pos"]
-        return (
-            (506 <= x <= 832 and y > 127) or
-            (832 < x <= 1064 and y < 80) or
-            (1113 < x <= 1464 and y < 191) or
-            (1579 < x <= 1943 and y < 191) or
-            (1946 < x <= 1964 and y >= 191) or
-            (1984 < x <= 2060 and (y >= 191 or y < 127)) or
-            (2114 < x < 2440 and y < 191) or
-            x < self.current_x - 500
-        )
-    
-    def _is_death_condition_w4s4(self, info):
-        x, y = info["x_pos"], info["y_pos"]
-        return (
-            (x <= 1500 and y < 127) or
-            (1588 <= x < 2380 and y >= 127)
-        )
-
-class CustomSkipFrameWrapper(gym.Wrapper):
-    def __init__(self, env, skip=4):
-        super().__init__(env)
-        self.observation_space = Box(low=0, high=255, shape=(skip, 84, 84))
-        self.skip = skip
-        self.states = np.zeros((skip, 84, 84), dtype=np.float32)
-
-    def step(self, action):
-        total_reward = 0
-        last_states = []
-        terminated = False
-        truncated = False
-        info = {}
-        
-        for i in range(self.skip):
-            state, reward, terminated, truncated, info = self.env.step(action)
-            total_reward += reward
-            
-            if i >= self.skip / 2:
-                last_states.append(state)
-                
-            if terminated or truncated:
-                self.reset()
-                return self.states[None, :, :, :].astype(np.float32), total_reward, terminated, truncated, info
-        
-        max_state = np.max(np.concatenate(last_states, 0), 0)
-        self.states[:-1] = self.states[1:]
-        self.states[-1] = max_state
-        
-        return self.states[None, :, :, :].astype(np.float32), total_reward, terminated, truncated, info
-
-    def reset(self, **kwargs):
-        state, info = self.env.reset(**kwargs)
-        self.states = np.concatenate([state for _ in range(self.skip)], 0)
-        return self.states[None, :, :, :].astype(np.float32), info
-
-def create_train_env(world, stage, action_type="simple", output_path=None, version = 'v3'):
-    if (version == 'v3'):
-        # Try modern environment ID first
-        env = gym_super_mario_bros.make(
-            f"SuperMarioBros-{world}-{stage}-v3",
-            apply_api_compatibility=True,
-            render_mode="human"
-        )
-    else:
-        # v0 for visualization
-        env = gym_super_mario_bros.make(
-            "SuperMarioBros-v0",
-            apply_api_compatibility=True,
-            render_mode="human"
-        )
-    
-    monitor = Monitor(256, 240, output_path) if output_path else None
-    
-    action_map = {
-        "right": RIGHT_ONLY,
-        "simple": SIMPLE_MOVEMENT,
-        "complex": COMPLEX_MOVEMENT
-    }
-    actions = action_map.get(action_type, SIMPLE_MOVEMENT)
-    
+def make_env(world, stage, actions, frame_size=(84, 84), frame_stack=4, frameskip=4, output_path=None):
+    env = gym_super_mario_bros.make(f"SuperMarioBros-{world}-{stage}-v3")
     env = JoypadSpace(env, actions)
-    env = CustomRewardWrapper(env, world, stage, monitor)
-    env = CustomSkipFrameWrapper(env)
-    
+    env = Monitor(env, output_path, record_every=1) if output_path else env
+    env.frame_size = frame_size
+    env.frame_stack = frame_stack
+    env.frameskip = frameskip
     return env
+
+def worker_process(conn, world, stage, actions, frame_size, frame_stack, frameskip, output_path):
+    try:
+        actual_frameskip = max(1, int(frameskip))
+        env = make_env(world, stage, actions, frame_size, frame_stack, actual_frameskip, output_path)
+        state_buffer = deque(maxlen=frame_stack)
+        is_monitor = isinstance(env, Monitor)
+        frame_stack = frame_stack
+        frame_size = frame_size
+        
+        def reset_env():
+            obs = env.reset()
+            frame = preprocess_frame(obs, frame_size)
+            state_buffer.clear()
+            for _ in range(frame_stack):
+                state_buffer.append(frame)
+            return np.stack(state_buffer, axis=-1)
+
+        prev_info = {"x_pos": 0}
+        state = reset_env()
+
+        while True:
+            try:
+                cmd, data = conn.recv()
+            except (EOFError, ConnectionResetError):
+                break
+                
+            if cmd == "reset":
+                state = reset_env()
+                conn.send(state)
+            elif cmd == "step":
+                action = data
+                total_reward = 0
+                done = False
+                info = {}
+                
+                for _ in range(actual_frameskip):
+                    if is_monitor:
+                        obs, reward, done, info = env.step(action)
+                    else:
+                        obs, reward, done, info = env.step(action)
+                    
+                    prev_info.update(info)
+                    if info['flag_get']:
+                        reward += 500
+                    if info.get("x_pos") > 2000:
+                        reward += 2
+                    elif info.get("x_pos") > 3000:
+                        reward += 10
+                    total_reward += reward
+                    if done:
+                        break
+                
+                if not done:
+                    frame = preprocess_frame(obs, frame_size)
+                    state_buffer.append(frame)
+                    state = np.stack(state_buffer, axis=-1)
+                else:
+                    if is_monitor:
+                        env.end_episode()
+                    state = reset_env()
+                
+                conn.send((state, total_reward / 10, done, info))
+            elif cmd == "record":
+                if is_monitor:
+                    # env._save_video()
+                    pass
+                # respond with a tuple that matches (state, reward, done, info)
+                # so a stray/late record reply won't break the main step() unpacking
+                try:
+                    conn.send((state, 0.0, False, {}))
+                except Exception:
+                    # if something fails, still try to send a safe fallback
+                    try:
+                        conn.send((np.stack([np.zeros(frame_size, dtype=np.uint8)]*frame_stack, axis=-1),
+                                   0.0, False, {}))
+                    except Exception:
+                        # last resort: send a simple 4-tuple with zeros
+                        conn.send((np.zeros((frame_size[0], frame_size[1], frame_stack), dtype=np.uint8),
+                                   0.0, False, {}))
+            elif cmd == "close":
+                break
+    except Exception as e:
+        print(f"Worker process error: {e}")
+    finally:
+        env.close()
+        conn.close()
+
+class MultiMarioEnv:
+    def __init__(self, world=1, stage=1, action_type="simple",
+                 num_envs=2, frame_size=(84, 84), frame_stack=4, frameskip=4, output_path=None):
+        
+        if action_type == "right":
+            self.actions = RIGHT_ONLY
+        elif action_type == "simple":
+            self.actions = SIMPLE_MOVEMENT
+        else:
+            self.actions = COMPLEX_MOVEMENT
+        
+        self.frame_size = frame_size    
+        self.frame_stack = frame_stack   
+
+        self.num_envs = num_envs
+        self.parent_conns, self.worker_conns = zip(*[mp.Pipe() for _ in range(num_envs)])
+        self.ps = []
+        self.output_path = output_path
+
+        for idx in range(num_envs):
+            p = mp.Process(
+                target=worker_process,
+                args=(self.worker_conns[idx], world, stage, self.actions,
+                      frame_size, frame_stack, frameskip, output_path),
+                daemon=True
+            )
+            p.start()
+            self.ps.append(p)
+
+        # Close worker connections in parent process
+        for conn in self.worker_conns:
+            conn.close()
+            
+    def trigger_recording(self, env_idx, timeout=5.0):
+        """
+        Trigger video recording for a specific worker and consume its reply immediately
+        so we don't pollute the normal step() recv order.
+        """
+        if not self.output_path:
+            return False
+        conn = self.parent_conns[env_idx]
+        try:
+            conn.send(("record", None))
+            # immediately recv to consume the worker response
+            # optionally add timeout handling (not shown) if you want robustness
+            resp = conn.recv()
+            # resp is a step-like tuple (state, reward, done, info) from worker per our change
+            return True
+        except Exception as e:
+            print(f"Error triggering recording for env {env_idx}: {e}")
+            return False
+
+    def reset(self):
+      results = []
+      for conn in self.parent_conns:
+          try:
+              conn.send(("reset", None))
+          except Exception as e:
+              print(f"Send error: {e}")
+      for conn in self.parent_conns:
+          try:
+              results.append(conn.recv())
+          except EOFError:
+              print("One worker died during reset; returning dummy obs.")
+              # use parent env attributes (safe) instead of Process attributes
+              h, w = self.frame_size
+              fs = self.frame_stack
+              results.append(np.zeros((h, w, fs), dtype=np.uint8))
+      # debug: verify shapes
+      shapes = [r.shape for r in results]
+      if len(set(shapes)) != 1:
+          print("[MultiMarioEnv.reset] shape mismatch on reset:", shapes)
+      return np.stack(results)
+
+    def step(self, actions):
+        for conn, action in zip(self.parent_conns, actions):
+            conn.send(("step", action))
+        results = [conn.recv() for conn in self.parent_conns]
+        obs, rewards, dones, infos = zip(*results)
+        return np.stack(obs), np.array(rewards), np.array(dones), infos
+
+    def close(self):
+        for conn in self.parent_conns:
+            try:
+                conn.send(("close", None))
+            except BrokenPipeError:
+                pass
+                
+        for p in self.ps:
+            p.join(timeout=1.0)
+            if p.is_alive():
+                p.terminate()
