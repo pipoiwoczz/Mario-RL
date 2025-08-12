@@ -20,9 +20,7 @@ Mario-RL is a reinforcement learning project designed to train an agent to navig
 8. [Training Hyperparameters](#training-hyperparameters)
 9. [Common Problems & Troubleshooting](#common-problems--troubleshooting)
 10. [Customization Tips](#customization-tips)
-11. [Contributing](#contributing)
-12. [Acknowledgements](#acknowledgements)
-13. [License & Contact](#license--contact)
+11. [Acknowledgements](#acknowledgements)
 
 ---
 
