@@ -5,7 +5,6 @@ from agent.agent import PPOTrainer
 from config import NUM_ENVS, FRAME_STACK, ROLLOUT_LEN, MINIBATCHES, PPO_EPOCHS, LR
 
 if __name__ == "__main__":
-    # Match your env settings
     eval_kwargs = {
         "world": 1,
         "stage": 1,

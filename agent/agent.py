@@ -43,19 +43,14 @@ def explained_variance(y_pred, y):
     return float(1 - torch.var(y - y_pred) / (var_y + 1e-8))
 
 
-# ---------- trainer ----------
+# Main Training Loop
 class PPOTrainer:
     def __init__(self, env, model, num_envs=NUM_ENVS, rollout_len=ROLLOUT_LEN,
                  minibatches=MINIBATCHES, ppo_epochs=PPO_EPOCHS, lr=LR,
                  eval_env_kwargs=None):
-        """
-        eval_env_kwargs: dict to pass to make_env(...) if available for single-process eval.
-                        Example: {'world':1, 'stage':1, 'actions':SIMPLE_MOVEMENT,
-                                  'frame_size':(84,84), 'frame_stack':4, 'frameskip':4}
-        """
+        # Initialize environment and model
         self.env = env
         self.model = model.to(DEVICE)
-        self.model.load_state_dict(torch.load("trained_model.pth", map_location="cpu"))
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, eps=1e-5)
         self.num_envs = num_envs
         self.rollout_len = rollout_len
@@ -85,7 +80,7 @@ class PPOTrainer:
         self.worker_restart_count = 0
 
     def _recreate_env(self):
-        """Safely recreate the environment"""
+        # Safely recreate the environment
         print("Recreating environment due to worker failure...")
         try:
             self.env.close()
@@ -121,7 +116,7 @@ class PPOTrainer:
         values_buf = torch.zeros(T, N, dtype=torch.float32, device=DEVICE)
 
         # Attempt rollout with recovery
-        for attempt in range(3):  # Max 3 attempts
+        for attempt in range(3):  
             try:
                 obs_np = self.env.reset()
                 obs_t = obs_to_tensor(obs_np)
@@ -147,13 +142,6 @@ class PPOTrainer:
                 for i in range(N):
                     self.running_rewards[i] += rewards_np[i]
                     if dones_np[i]:
-                        # # Check if we have a new high score
-                        # if self.running_rewards[i] > self.high_scores[i]:
-                        #     self.high_scores[i] = self.running_rewards[i]
-                        #     # print(f"🏆 New high score in env {i}: {self.high_scores[i]:.2f}")
-                        #     # Trigger video recording for this environment
-                        #     self.env.trigger_recording(i)
-                        
                         self.ep_rewards.append(self.running_rewards[i])
                         self.running_rewards[i] = 0
                         if len(self.ep_rewards) % log_interval == 0:
@@ -175,11 +163,9 @@ class PPOTrainer:
                 print(f"Step {t} failed: {e}")
                 self.env = self._recreate_env()
                 
-                # If we're more than halfway through, restart the rollout
                 if t > T // 2:
                     return self.collect_rollouts()
                 else:
-                    # Continue with partial rollout
                     print(f"Continuing with partial rollout ({t}/{T} steps)")
                     break
 
@@ -187,7 +173,7 @@ class PPOTrainer:
             _, last_values = self.model(obs_t)
         last_values = last_values.to(DEVICE)
 
-        # Only use completed steps
+        # Compute GAE
         actual_steps = t + 1 if t < T else T
         advantages, returns = compute_gae_torch(
             rewards_buf[:actual_steps], 
@@ -285,8 +271,7 @@ class PPOTrainer:
     def save(self, path):
         torch.save(self.model.state_dict(), path)
 
-    def train(self, total_updates=10000, save_every=50, log_interval=1,
-              evaluate_every=50, n_eval_episodes=40, deterministic_eval=True):
+    def train(self, total_updates=10000, save_every=50, log_interval=1):
         t0 = time.time()
         for update in range(1, total_updates + 1):
             batch = self.collect_rollouts()

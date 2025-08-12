@@ -25,6 +25,9 @@ def make_env(world, stage, actions, frame_size=(84, 84), frame_stack=4, frameski
     return env
 
 def worker_process(conn, world, stage, actions, frame_size, frame_stack, frameskip, output_path):
+    """
+    Worker process to interact with the environment and communicate with the main process.
+    """
     try:
         actual_frameskip = max(1, int(frameskip))
         env = make_env(world, stage, actions, frame_size, frame_stack, actual_frameskip, output_path)
@@ -66,6 +69,8 @@ def worker_process(conn, world, stage, actions, frame_size, frame_stack, framesk
                         obs, reward, done, info = env.step(action)
                     
                     prev_info.update(info)
+
+                    # Check for new high scores
                     if info['flag_get']:
                         reward += 500
                     if info.get("x_pos") > 2000:
@@ -87,20 +92,17 @@ def worker_process(conn, world, stage, actions, frame_size, frame_stack, framesk
                 
                 conn.send((state, total_reward / 10, done, info))
             elif cmd == "record":
+                # don't use yet, just let the Monitor auto-handle it
                 if is_monitor:
-                    # env._save_video()
                     pass
-                # respond with a tuple that matches (state, reward, done, info)
-                # so a stray/late record reply won't break the main step() unpacking
+                # fallback
                 try:
                     conn.send((state, 0.0, False, {}))
                 except Exception:
-                    # if something fails, still try to send a safe fallback
                     try:
                         conn.send((np.stack([np.zeros(frame_size, dtype=np.uint8)]*frame_stack, axis=-1),
                                    0.0, False, {}))
                     except Exception:
-                        # last resort: send a simple 4-tuple with zeros
                         conn.send((np.zeros((frame_size[0], frame_size[1], frame_stack), dtype=np.uint8),
                                    0.0, False, {}))
             elif cmd == "close":
@@ -145,19 +147,14 @@ class MultiMarioEnv:
             conn.close()
             
     def trigger_recording(self, env_idx, timeout=5.0):
-        """
-        Trigger video recording for a specific worker and consume its reply immediately
-        so we don't pollute the normal step() recv order.
-        """
+        # Trigger video recording for a specific environment
         if not self.output_path:
             return False
         conn = self.parent_conns[env_idx]
+        # don't use yet, just let the Monitor auto-handle it
         try:
             conn.send(("record", None))
-            # immediately recv to consume the worker response
-            # optionally add timeout handling (not shown) if you want robustness
             resp = conn.recv()
-            # resp is a step-like tuple (state, reward, done, info) from worker per our change
             return True
         except Exception as e:
             print(f"Error triggering recording for env {env_idx}: {e}")
