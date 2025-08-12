@@ -3,7 +3,7 @@
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Mario--RL-black?logo=github)](https://github.com/pipoiwoczz/Mario-RL) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE) [![Python](https://img.shields.io/badge/python-3.8%2C3.9-blue)](https://www.python.org/) [![Deps](https://img.shields.io/badge/deps-numpy%20%7C%20gym--super--mario--bros-lightgrey)](https://pypi.org/)
 
 <video width="640" controls>
-  <source src="eval_videos/highscore_0_3063.mp4" type="video/mp4">
+  <source src="eval_videos/map_1.1.gif" type="video/gif">
   Your browser does not support the video tag.
 </video>
 
