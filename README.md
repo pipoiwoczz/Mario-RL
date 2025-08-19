@@ -1,14 +1,23 @@
 # Mario-RL
-
-[![GitHub Repo](https://img.shields.io/badge/GitHub-Mario--RL-black?logo=github)](https://github.com/pipoiwoczz/Mario-RL) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE) [![Python](https://img.shields.io/badge/python-3.8%2C3.9-blue)](https://www.python.org/) [![Deps](https://img.shields.io/badge/deps-numpy%20%7C%20gym--super--mario--bros-lightgrey)](https://pypi.org/)
+<p align="center">
+  <img src="demo/map_1.1.gif" width="420" alt="Mario PPO Demo 1"/>
+  <img src="demo/map_1.2.gif" width="420" alt="Mario PPO Demo 2"/>
+</p>
 
 <p align="center">
-  <img src="demo/map_1.1.gif" width="300" alt="Mario Map 1-1" />
-  <img src="demo/map_1.2.gif" width="300" alt="Mario Map 1-2" />
-  <!-- <img src="demo/map_1.3.gif" width="300" alt="Mario Map 1-3" /> -->
+   <a href="https://github.com/pipoiwoczz/Mario-RL"><img src="https://img.shields.io/badge/GitHub-Repo-black?logo=github" /></a>
+  <img src="https://img.shields.io/badge/python-3.8%20|%203.9-blue" />
+  <img src="https://img.shields.io/badge/Status-Active-brightgreen" />
+   <img src="https://img.shields.io/badge/License-MIT-green" />
 </p>
+
+
 Mario-RL is a reinforcement learning project designed to train an agent to navigate and excel in the classic Super Mario Bros game environment using advanced RL algorithms. The project leverages a multiprocessing-ready environment wrapper (`MultiMarioEnv`) and a monitoring system to record high-score videos, making it ideal for RL experimentation. It is currently in active development, with ongoing improvements to training stability, agent performance, and environment robustness.
 
+- **Weights**: see `trained_model/`  
+- **Videos**: see `eval_videos/` or `demo/`
+
+***This project must run with Python 3.8 or 3.9***
 ---
 
 ## Table of Contents
@@ -93,6 +102,13 @@ pip install gym_super_mario_bros nes_py numpy==1.24.3 imageio opencv-python
 
 ## Installation
 
+### Docker
+```bash
+docker build -t mario-rl .
+docker run --gpus all -it --rm -v ${PWD}:/app mario-rl python train.py --world 1 --stage 1
+```
+
+### Local Installation
 Follow these steps to set up the project:
 
 1. **Clone the Repository**:
@@ -216,6 +232,14 @@ The `config.py` file allows customization of environment and training settings. 
 | `ADV_SCALE`     | Advantage scaling factor                                   | `3.0`   |
 
 To modify these, edit `config.py` or pass arguments to `train.py`.
+
+### Experiment tracker (examples)
+
+| Map | Global Steps | PPO Updates | Episodes | Video |
+|-----|--------------|-------------|----------|-------|
+| 1-1 | ~1.000.0000  | 300        | 2000   | `eval_videos/highscore_0_3066.mp4` |
+| 1-2 | ~800.000      | 250       | 1600     | `eval_videos/highscore_0_2824.mp4` |
+
 
 ## Common Problems & Troubleshooting
 
